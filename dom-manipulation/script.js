@@ -231,7 +231,7 @@ window.onload = function() {
   filterQuotes();
 };
 
-// ---- Add to script.js ----
+// ---- Add  ----
 const SERVER_URL = 'https://jsonplaceholder.typicode.com/posts';
 let syncing = false;
 
@@ -245,13 +245,18 @@ function mapPostToQuote(p) {
   };
 }
 
-async function fetchServerQuotes(limit = 10) {
-  const res = await fetch(`${SERVER_URL}?_limit=${limit}`);
+// ✅ Replace or add this function
+async function fetchQuotesFromServer(limit = 10) {
+  const res = await fetch(`https://jsonplaceholder.typicode.com/posts?_limit=${limit}`);
   if (!res.ok) throw new Error('Server fetch failed');
   const posts = await res.json();
   return posts
-    .map(mapPostToQuote)
-    // guard against empty text
+    .map(p => ({
+      id: 'srv_' + String(p.id),
+      text: (p.body || '').trim(),
+      category: (p.title || 'General').trim(),
+      updatedAt: nowISO()
+    }))
     .filter(q => q.text.length > 0);
 }
 
@@ -300,7 +305,7 @@ async function syncWithServer() {
   setSyncStatus('Syncing…');
 
   try {
-    const serverQuotes = await fetchServerQuotes(8);
+    const serverQuotes = await fetchQuotesFromServer(8);
     const { added, replaced, conflicts } = mergeServerIntoLocal(serverQuotes);
     setSyncStatus(`Synced. Added: ${added}, Updated: ${replaced}, Conflicts: ${conflicts}`);
     // If you have filters, refresh current view:
