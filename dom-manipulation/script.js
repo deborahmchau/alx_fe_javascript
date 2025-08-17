@@ -316,7 +316,7 @@ async function syncQuotes() {
 
     saveQuotes();
     populateCategories();
-    console.log("Quotes synced with server");
+    console.log("Quotes synced with server!");
   } catch (err) {
     console.error("Sync failed:", err);
   }
@@ -336,7 +336,7 @@ if (syncBtn) syncBtn.addEventListener('click', syncWithServer);
 setInterval(syncQuotes, 60000);
 
 // Kick off an initial sync shortly after load (so the UI is ready)
-setTimeout(syncWithServer, 1500);
+setTimeout(syncQuotes, 1500);
 
 function toast(msg) {
   const t = document.createElement('div');
