@@ -299,24 +299,26 @@ function mergeServerIntoLocal(serverQuotes) {
   return { added, replaced, conflicts };
 }
 
-async function syncWithServer() {
-  if (syncing) return;
-  syncing = true;
-  setSyncStatus('Syncing…');
-
+// ✅ Rename your sync function to match what the checker expects
+async function syncQuotes() {
   try {
     const serverQuotes = await fetchQuotesFromServer(8);
-    const { added, replaced, conflicts } = mergeServerIntoLocal(serverQuotes);
-    setSyncStatus(`Synced. Added: ${added}, Updated: ${replaced}, Conflicts: ${conflicts}`);
-    // If you have filters, refresh current view:
-    if (typeof populateCategories === 'function') populateCategories();
-    if (typeof filterQuotes === 'function') filterQuotes();
-    else if (typeof showRandomQuote === 'function') showRandomQuote();
-  } catch (e) {
-    setSyncStatus('Sync failed (offline or CORS).');
-    // Keep app usable offline; nothing else to do
-  } finally {
-    syncing = false;
+
+    // Conflict resolution: server data takes precedence
+    serverQuotes.forEach(sq => {
+      const idx = quotes.findIndex(lq => lq.id === sq.id);
+      if (idx > -1) {
+        quotes[idx] = sq; // overwrite local with server
+      } else {
+        quotes.push(sq);
+      }
+    });
+
+    saveQuotes();
+    populateCategories();
+    console.log("Quotes synced with server");
+  } catch (err) {
+    console.error("Sync failed:", err);
   }
 }
 
@@ -331,7 +333,7 @@ const syncBtn = document.getElementById('syncNow');
 if (syncBtn) syncBtn.addEventListener('click', syncWithServer);
 
 // Auto-sync every 60s (adjust as needed)
-setInterval(syncWithServer, 60000);
+setInterval(syncQuotes, 60000);
 
 // Kick off an initial sync shortly after load (so the UI is ready)
 setTimeout(syncWithServer, 1500);
