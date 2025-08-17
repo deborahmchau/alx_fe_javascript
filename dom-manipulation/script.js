@@ -156,3 +156,57 @@ if (importInput) importInput.addEventListener('change', importFromJsonFile);
 if (!showLastViewedQuoteIfAny()) {
   showRandomQuote();
 }
+
+function populateCategories() {
+  const categoryFilter = document.getElementById("categoryFilter");
+  const categories = ["all", ...new Set(quotes.map(q => q.category))];
+  
+  categoryFilter.innerHTML = ""; // reset dropdown
+  categories.forEach(cat => {
+    const option = document.createElement("option");
+    option.value = cat;
+    option.textContent = cat;
+    categoryFilter.appendChild(option);
+  });
+
+  // restore last selected filter from localStorage
+  const savedCategory = localStorage.getItem("selectedCategory") || "all";
+  categoryFilter.value = savedCategory;
+}
+
+function filterQuotes() {
+  const selectedCategory = document.getElementById("categoryFilter").value;
+  localStorage.setItem("selectedCategory", selectedCategory);
+
+  let filteredQuotes = quotes;
+  if (selectedCategory !== "all") {
+    filteredQuotes = quotes.filter(q => q.category === selectedCategory);
+  }
+
+  // Show a random filtered quote
+  if (filteredQuotes.length > 0) {
+    const randomIndex = Math.floor(Math.random() * filteredQuotes.length);
+    document.getElementById("quoteDisplay").textContent = 
+      `"${filteredQuotes[randomIndex].text}" — ${filteredQuotes[randomIndex].category}`;
+  } else {
+    document.getElementById("quoteDisplay").textContent = "No quotes available in this category.";
+  }
+}
+
+function addQuote() {
+  const text = document.getElementById("newQuoteText").value;
+  const category = document.getElementById("newQuoteCategory").value;
+
+  if (text && category) {
+    quotes.push({ text, category });
+    saveQuotes();
+    populateCategories(); // 🔥 update dropdown dynamically
+    alert("Quote added!");
+  }
+}
+
+window.onload = function() {
+  loadQuotes();
+  populateCategories();
+  filterQuotes();
+};
