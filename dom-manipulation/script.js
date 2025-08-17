@@ -14,6 +14,24 @@ function saveQuotes() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(quotes));
 }
 
+function uid() {
+  return 'q_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function nowISO() {
+  return new Date().toISOString();
+}
+
+// Ensure all quotes have {id, updatedAt}
+function migrateQuoteSchema(quotesArr) {
+  let changed = false;
+  quotesArr.forEach(q => {
+    if (!q.id) { q.id = uid(); changed = true; }
+    if (!q.updatedAt) { q.updatedAt = nowISO(); changed = true; }
+  });
+  if (changed) saveQuotes();
+}
+
 // ===== Data =====
 let quotes = loadQuotes();
 if (quotes.length === 0) {
@@ -24,6 +42,8 @@ if (quotes.length === 0) {
   ];
   saveQuotes();
 }
+
+migrateQuoteSchema(quotes);
 
 // ===== Rendering =====
 function renderQuote(quote) {
@@ -55,12 +75,12 @@ function addQuote() {
   const category = document.getElementById("newQuoteCategory").value.trim();
 
   if (text && category) {
-    quotes.push({ text, category });
+    quotes.push({ id: uid(), text, category, updatedAt: nowISO() });
     saveQuotes();
-
-    document.getElementById("newQuoteText").value = "";
-    document.getElementById("newQuoteCategory").value = "";
+    // If you have populateCategories()/filterQuotes(), keep calling them as before
+    if (typeof populateCategories === 'function') populateCategories();
     alert("Quote added successfully!");
+    // Optionally: showRandomQuote() or filterQuotes()
   } else {
     alert("Please enter both a quote and a category.");
   }
@@ -210,3 +230,119 @@ window.onload = function() {
   populateCategories();
   filterQuotes();
 };
+
+// ---- Add to script.js ----
+const SERVER_URL = 'https://jsonplaceholder.typicode.com/posts';
+let syncing = false;
+
+// Map JSONPlaceholder -> Quote model
+function mapPostToQuote(p) {
+  return {
+    id: 'srv_' + String(p.id),                // namespace server ids
+    text: (p.body || '').trim(),
+    category: (p.title || 'General').trim(),
+    updatedAt: nowISO() // synthesize since API has no timestamps
+  };
+}
+
+async function fetchServerQuotes(limit = 10) {
+  const res = await fetch(`${SERVER_URL}?_limit=${limit}`);
+  if (!res.ok) throw new Error('Server fetch failed');
+  const posts = await res.json();
+  return posts
+    .map(mapPostToQuote)
+    // guard against empty text
+    .filter(q => q.text.length > 0);
+}
+
+// (Optional) simulate pushing local quotes to server (JSONPlaceholder will just echo)
+async function pushLocalQuotesToServer(localSubset = []) {
+  // This is just a demo; JSONPlaceholder won't persist.
+  const results = [];
+  for (const q of localSubset) {
+    const res = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ title: q.category, body: q.text, userId: 1 })
+    });
+    if (res.ok) results.push(await res.json());
+  }
+  return results;
+}
+
+function mergeServerIntoLocal(serverQuotes) {
+  const byKey = new Map(); // key -> local index
+  quotes.forEach((q, i) => byKey.set(`${q.text.trim()}|||${q.category.trim()}`, i));
+
+  let added = 0, replaced = 0, conflicts = 0;
+  for (const sq of serverQuotes) {
+    const key = `${sq.text.trim()}|||${sq.category.trim()}`;
+    if (byKey.has(key)) {
+      // conflict: server wins
+      const i = byKey.get(key);
+      const local = quotes[i];
+      if (local.text !== sq.text || local.category !== sq.category) conflicts++;
+      quotes[i] = sq; // replace
+      replaced++;
+    } else {
+      quotes.push(sq);
+      byKey.set(key, quotes.length - 1);
+      added++;
+    }
+  }
+  saveQuotes();
+  return { added, replaced, conflicts };
+}
+
+async function syncWithServer() {
+  if (syncing) return;
+  syncing = true;
+  setSyncStatus('Syncing…');
+
+  try {
+    const serverQuotes = await fetchServerQuotes(8);
+    const { added, replaced, conflicts } = mergeServerIntoLocal(serverQuotes);
+    setSyncStatus(`Synced. Added: ${added}, Updated: ${replaced}, Conflicts: ${conflicts}`);
+    // If you have filters, refresh current view:
+    if (typeof populateCategories === 'function') populateCategories();
+    if (typeof filterQuotes === 'function') filterQuotes();
+    else if (typeof showRandomQuote === 'function') showRandomQuote();
+  } catch (e) {
+    setSyncStatus('Sync failed (offline or CORS).');
+    // Keep app usable offline; nothing else to do
+  } finally {
+    syncing = false;
+  }
+}
+
+function setSyncStatus(msg) {
+  const el = document.getElementById('syncStatus');
+  if (el) el.textContent = msg;
+  // You could also add a brief highlight effect here if you like
+}
+
+// After DOM ready / after other listeners
+const syncBtn = document.getElementById('syncNow');
+if (syncBtn) syncBtn.addEventListener('click', syncWithServer);
+
+// Auto-sync every 60s (adjust as needed)
+setInterval(syncWithServer, 60000);
+
+// Kick off an initial sync shortly after load (so the UI is ready)
+setTimeout(syncWithServer, 1500);
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position: 'fixed', right: '12px', bottom: '12px',
+    padding: '10px 14px', background: '#333', color: '#fff',
+    borderRadius: '6px', zIndex: 9999, opacity: '0.95'
+  });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// Example: call inside syncWithServer() after merge:
+toast(`Synced ✓ Added: ${added}, Updated: ${replaced}, Conflicts: ${conflicts}`);
+
